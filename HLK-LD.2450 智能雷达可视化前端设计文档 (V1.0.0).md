@@ -101,11 +101,64 @@
 
 ## 3. 前端 API 调用规划 (供开发参考)
 
+### 设备发现与选择机制
+
+为简化用户操作，前端应实现自动设备发现：
+
+1. **页面初始化**：加载时自动调用 `GET /api/v1/devices` 获取所有设备列表
+2. **设备选择**：
+   - 如果只有一个在线设备，自动选中
+   - 如果有多个设备，显示下拉选择器让用户选择
+   - 优先选择在线设备 (`online_status: true`)
+3. **MAC获取**：使用选中的设备MAC调用后续API，无需用户手动输入
+
+**前端实现示例**:
+```javascript
+// 设备发现与选择
+async function loadDevices() {
+  try {
+    const response = await fetch('/api/v1/devices');
+    const result = await response.json();
+    
+    if (result.code === 200 && result.data.length > 0) {
+      // 过滤在线设备
+      const onlineDevices = result.data.filter(d => d.online_status);
+      
+      if (onlineDevices.length === 1) {
+        // 自动选择唯一在线设备
+        setSelectedDevice(onlineDevices[0].device_mac);
+      } else if (onlineDevices.length > 1) {
+        // 显示设备选择器
+        showDeviceSelector(onlineDevices);
+      } else {
+        // 无在线设备，显示提示
+        showNoDeviceMessage();
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load devices:', error);
+  }
+}
+
+// 使用选中的MAC调用其他API
+function loadDeviceStatus(mac) {
+  fetch(`/api/v1/device/status?device_mac=${mac}`)
+    .then(res => res.json())
+    .then(data => updateDeviceStatus(data));
+}
+```
+
+这样用户无需手动输入MAC，前端自动获取并使用，提高用户体验。
+
+### API 调用表
+
 功能模块,API 路径,方法,说明
+
+设备列表,/api/v1/devices,GET,获取所有设备MAC列表，用于自动设备发现
 
 实时流,/ws/radar/live?mac={id},WS,获取 10Hz 实时坐标推送（后端需实现WebSocket支持） 6
 
-历史回溯,/api/v1/radar/history,GET,\"参数：start_time, end_time。获取历史轨迹点（后端需实现） 12\"
+历史回溯,/api/v1/radar/history,GET,\"参数：device_mac, start_time, end_time。获取历史轨迹点（后端需实现） 12\"
 
 守卫日志,/api/v1/guard/events,GET,获取入侵报警的历史列表与坐标节点（后端需实现） 13
 
