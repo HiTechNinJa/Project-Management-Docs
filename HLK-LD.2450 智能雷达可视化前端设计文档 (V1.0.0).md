@@ -1,10 +1,9 @@
-# HLK-LD.2450 智能雷达可视化前端设计文档 (V1.0.1)
+# HLK-LD.2450 智能雷达可视化前端设计文档 (V1.0.2)
 
 ## 1. 页面功能模块规划
 
-本系统采用响应式 Web 设计，分为 **实时态势 (Live)**、**守卫预警
-(Guard)**、**历史回溯 (History)** 和 **设备配置 (Settings)**
-四大核心模块。
+本系统采用响应式 Web 设计，分为 **实时态势 (Live)**、**历史回溯 (History)** 和 **设备配置 (Settings)**
+三大核心模块。[守卫预警 (Guard) 模块标记为未来版本，现阶段不用实现]
 
 ### 1.1 实时态势仪表盘 (Live Dashboard)
 
@@ -19,26 +18,7 @@
 - **上传频率指示**：显示当前 ESP32 的上报状态（待机 1Hz / 活跃 10Hz） 6,
   7。
 
-### 1.2 守卫模式 (Guardian Mode) ------ **新增核心逻辑**
-
-该模块利用雷达的"区域检测"能力 8, 9，实现安全监控功能。
-
-- **预警区域设置**：用户可在扇形图上直接点击拖动，划定最多 **3
-  个矩形预警区**（对应雷达内部指令 0x00C2） 9-11。
-
-- **警戒时间轴**：设置每日警戒时段（如 22:00 - 06:00）。
-
-- **入侵节点展示**：当在警戒时间内目标进入预警区，系统从数据库
-  radar_tracking_logs 调取该时间点数据 12, 13，在页面右侧时间轴显示：
-
-- **入侵快照**：展示目标当时的 X/Y 坐标位置分布。
-
-- **持续时长**：目标在区域内停留的总秒数。
-
-- **实时推送机制**：当 active_viewers \> 0
-  且触发入侵时，前端界面产生红色闪烁报警 6, 14。
-
-### 1.3 历史回溯与统计 (Analytics) ------ **新增核心逻辑**
+### 1.2 历史回溯与统计 (Analytics) ------ **新增核心逻辑**
 
 - **轨迹重放 (Path Replay)**：
 
@@ -47,14 +27,14 @@
 - 在扇形图上以"淡入淡出"的尾迹线展示目标的移动路线，支持 1x/2x/4x
   速度回放。
 
-- **空间占用热力图 (Heatmap)**：
+- **空间占用热力图 (Heatmap)**：[未来版本 - 需后端实现聚合API]
 
 - 统计数据库内一段周期（如 24 小时）的所有位置点。
 
 - 将 6
   米扇形区划分为若干网格，根据点位密度渲染颜色，直观显示哪个位置是人员高频活动区（如家中的办公椅、沙发区）。
 
-### 1.4 设备高级控制 (Control Panel)
+### 1.3 设备高级控制 (Control Panel)
 
 - **模式切换**：单目标/多目标追踪模式一键下发（指令 0x0080/0x0090）
   15-17。
@@ -64,6 +44,8 @@
 
 - **系统诊断**：实时显示 ESP32 的固件版本、MAC
   地址、最后一次心跳时间及在线状态 14, 20。
+
+- **区域设置**：[未来版本 - 守卫模式相关]
 
 ## 2. 核心算法与交互逻辑
 
@@ -156,16 +138,309 @@ function loadDeviceStatus(mac) {
 
 设备列表,/api/v1/devices,GET,获取所有设备MAC列表，用于自动设备发现
 
-实时流,/ws/radar/live?mac={id},WS,获取 10Hz 实时坐标推送（后端需实现WebSocket支持） 6
+实时流,/ws/radar/live?mac={id},WS,获取 10Hz 实时坐标推送（后端已实现WebSocket支持） 6
 
-历史回溯,/api/v1/radar/history,GET,\"参数：device_mac, start_time, end_time。获取历史轨迹点（后端需实现） 12\"
+历史回溯,/api/v1/radar/history,GET,\"参数：device_mac, start_time, end_time。获取历史轨迹点（后端已实现） 12\"
 
-守卫日志,/api/v1/guard/events,GET,获取入侵报警的历史列表与坐标节点（后端需实现） 13
+守卫日志,/api/v1/guard/events,GET,\"[未来版本] 获取入侵报警的历史列表与坐标节点（后端需实现） 13\"
 
-设备状态,/api/v1/device/status,GET,获取ESP32固件版本、MAC、最后心跳时间及在线状态（后端需实现） 14, 20
+设备状态,/api/v1/device/status,GET,获取ESP32固件版本、MAC、最后心跳时间及在线状态（后端已实现） 14, 20
 
-下发指令,/api/v1/device/command,POST,\"存储待执行指令（重启、切模式、设预警区，后端需实现pending_commands处理） 14, 20\"
+下发指令,/api/v1/device/command,POST,\"存储待执行指令（重启、切模式，后端已实现pending_commands处理） 14, 20\"
 
+
+---
+
+## 4. 详细API使用指南
+
+### 4.1 设备列表API (GET /api/v1/devices)
+
+**用途**: 获取系统中所有已注册的雷达设备信息，用于前端设备选择和自动发现。
+
+**请求示例**:
+```javascript
+fetch('/api/v1/devices')
+  .then(response => response.json())
+  .then(result => {
+    if (result.code === 200) {
+      console.log('设备列表:', result.data);
+    }
+  });
+```
+
+**成功响应**:
+```json
+{
+  "code": 200,
+  "data": [
+    {
+      "device_mac": "E4:B0:63:B4:C0:E0",
+      "online_status": true,
+      "firmware_ver": "V2.04.23101915",
+      "last_heartbeat": "2025-12-31T08:30:00Z",
+      "active_viewers": 1
+    }
+  ]
+}
+```
+
+**前端处理逻辑**:
+- 过滤在线设备 (`online_status: true`)
+- 如果只有一个设备，自动选中
+- 如果有多个设备，显示选择器
+- 显示设备状态指示器（在线/离线）
+
+### 4.2 实时数据流 (WebSocket /ws/radar/live)
+
+**用途**: 建立WebSocket连接，接收10Hz实时雷达数据推送。
+
+**连接建立**:
+```javascript
+const ws = new WebSocket(`ws://your-server:5000/ws/radar/live?mac=${selectedMac}`);
+
+ws.onopen = () => {
+  console.log('WebSocket连接已建立');
+  // 触发ESP32加速上传 (10Hz)
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  if (data.type === 'radar_data') {
+    updateRadarDisplay(data.targets);
+  }
+};
+
+ws.onclose = () => {
+  console.log('WebSocket连接已关闭');
+  // ESP32恢复正常上传频率 (1Hz)
+};
+```
+
+**数据格式**:
+```json
+{
+  "type": "radar_data",
+  "device_mac": "E4:B0:63:B4:C0:E0",
+  "targets": [
+    {
+      "x": 1456,
+      "y": 1017,
+      "speed": 0,
+      "resolution": 360
+    }
+  ],
+  "timestamp": 1735631400.123
+}
+```
+
+**前端渲染逻辑**:
+- 使用Canvas绘制扇形区域 (±60°, 6米半径)
+- 坐标转换: `screenX = canvas.width/2 + (x_mm * scale)`
+- 不同目标用不同颜色标识
+- 支持点击显示详细信息浮窗
+
+### 4.3 历史轨迹API (GET /api/v1/radar/history)
+
+**用途**: 获取指定时间段的历史雷达数据，用于轨迹回放和分析。
+
+**请求示例**:
+```javascript
+const params = new URLSearchParams({
+  device_mac: selectedMac,
+  start_time: '2025-12-31T08:00:00',
+  end_time: '2025-12-31T09:00:00'
+});
+
+fetch(`/api/v1/radar/history?${params}`)
+  .then(response => response.json())
+  .then(result => {
+    if (result.code === 200) {
+      renderTrajectory(result.data);
+    }
+  });
+```
+
+**成功响应**:
+```json
+{
+  "code": 200,
+  "data": [
+    {
+      "target_id": 1,
+      "pos_x": 1456,
+      "pos_y": 1017,
+      "speed": 0,
+      "resolution": 360,
+      "created_at": "2025-12-31T08:00:00.000Z"
+    }
+  ]
+}
+```
+
+**前端处理逻辑**:
+- 支持时间范围选择器
+- 轨迹回放控制 (播放/暂停/倍速)
+- 淡入淡出效果显示历史路径
+- 可选择显示特定目标的轨迹
+
+### 4.4 设备状态API (GET /api/v1/device/status)
+
+**用途**: 获取设备的详细状态信息，包括模式、版本、连接状态等。
+
+**请求示例**:
+```javascript
+fetch(`/api/v1/device/status?device_mac=${selectedMac}`)
+  .then(response => response.json())
+  .then(result => {
+    if (result.code === 200) {
+      updateDevicePanel(result.data);
+    }
+  });
+```
+
+**成功响应**:
+```json
+{
+  "code": 200,
+  "data": {
+    "device_mac": "E4:B0:63:B4:C0:E0",
+    "online_status": true,
+    "firmware_ver": "V2.04.23101915",
+    "track_mode": "multi",
+    "bluetooth_state": false,
+    "zone_config": [],
+    "active_viewers": 1,
+    "last_heartbeat": "2025-12-31T08:30:00Z"
+  }
+}
+```
+
+**前端显示逻辑**:
+- 实时更新设备状态指示器
+- 显示当前跟踪模式 (single/multi)
+- 蓝牙状态开关
+- 最后心跳时间和在线状态
+
+### 4.5 指令下发API (POST /api/v1/device/command)
+
+**用途**: 向ESP32设备发送控制指令，支持重启和模式切换。
+
+**重启指令**:
+```javascript
+fetch('/api/v1/device/command', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    device_mac: selectedMac,
+    command_type: 'REBOOT',
+    payload: {}
+  })
+})
+.then(response => response.json())
+.then(result => {
+  if (result.code === 200) {
+    showMessage('重启指令已发送，设备将在下次上报时执行');
+  }
+});
+```
+
+**模式切换指令**:
+```javascript
+// 切换到单目标模式
+fetch('/api/v1/device/command', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    device_mac: selectedMac,
+    command_type: 'SET_MODE',
+    payload: { mode: 'single' }
+  })
+});
+
+// 切换到多目标模式
+fetch('/api/v1/device/command', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    device_mac: selectedMac,
+    command_type: 'SET_MODE',
+    payload: { mode: 'multi' }
+  })
+});
+```
+
+**成功响应**:
+```json
+{
+  "code": 200,
+  "message": "Command queued successfully",
+  "command_id": 3
+}
+```
+
+**前端交互逻辑**:
+- 提供模式切换按钮 (单目标/多目标)
+- 重启设备按钮
+- 显示指令发送状态和确认
+- 指令可能延迟执行（需等待ESP32下次数据上报）
+
+### 4.6 错误处理
+
+**统一错误响应格式**:
+```json
+{
+  "code": 400,
+  "message": "Invalid device MAC address"
+}
+```
+
+**常见错误码**:
+- `400`: 请求参数错误
+- `404`: 设备未找到
+- `500`: 服务器内部错误
+
+**前端错误处理**:
+```javascript
+function handleApiError(error) {
+  switch(error.code) {
+    case 404:
+      showMessage('设备未找到，请检查设备是否在线');
+      break;
+    case 400:
+      showMessage('请求参数错误');
+      break;
+    default:
+      showMessage('网络错误，请稍后重试');
+  }
+}
+```
+
+### 4.7 实时更新机制
+
+**WebSocket重连逻辑**:
+```javascript
+function connectWebSocket() {
+  const ws = new WebSocket(wsUrl);
+
+  ws.onclose = () => {
+    setTimeout(connectWebSocket, 3000); // 3秒后重连
+  };
+
+  ws.onerror = () => {
+    showMessage('实时连接断开，正在重连...');
+  };
+}
+```
+
+**定期状态更新**:
+```javascript
+// 每30秒更新一次设备状态
+setInterval(() => {
+  if (selectedMac) {
+    loadDeviceStatus(selectedMac);
+  }
+}, 30000);
+```
 
 ---
 
@@ -176,3 +451,6 @@ function loadDeviceStatus(mac) {
 - **单/多目标模式**：前端需根据设备模式动态显示目标数量（单目标仅T1，多目标最多3个）。
 - **API规划更新**：统一历史回溯API路径为/api/v1/radar/history，添加设备状态API /api/v1/device/status。
 - **后端实现需求**：需实现WebSocket实时流、历史查询、守卫事件、设备状态和指令下发API。
+- **守卫模式调整**：守卫预警模块标记为[未来版本]，暂不开发；指令下发API移除SET_ZONE支持。
+- **指令执行功能**：ESP32远程指令执行功能已实现并测试通过，支持REBOOT和SET_MODE指令。前端可通过POST /api/v1/device/command API发送指令，ESP32在下次数据上报时执行。
+- **API文档完善**：添加详细的API使用指南，包括请求示例、响应格式、前端处理逻辑和错误处理。
